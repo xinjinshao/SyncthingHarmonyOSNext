@@ -1,0 +1,56 @@
+{
+  "app": {
+    "signingConfigs": [
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "E:\\Programming\\SyncthingHarmonyOSNext\\.local\\ohos-config\\default_SyncthingHarmonyOSNext_o2_7ANd8ONpobu0zJY35koG9ZqDQyPlhEzQ5OKbPSfE=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001BDBFE306AF6DAE851532C6D337235E8A1D0DA06D428AD80B7136AB20A36F6BF41A6EB18327847CB",
+          "profile": "E:\\Programming\\SyncthingHarmonyOSNext\\.local\\ohos-config\\default_SyncthingHarmonyOSNext_o2_7ANd8ONpobu0zJY35koG9ZqDQyPlhEzQ5OKbPSfE=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "E:\\Programming\\SyncthingHarmonyOSNext\\.local\\ohos-config\\default_SyncthingHarmonyOSNext_o2_7ANd8ONpobu0zJY35koG9ZqDQyPlhEzQ5OKbPSfE=.p12",
+          "storePassword": "0000001B84021CC30F4CB90E73C2DF27BE565BB8F45CEA02531626AB537CD9486976AC37589C98B04924DA"
+        }
+      }
+    ],
+    "products": [
+      {
+        "name": "default",
+        "signingConfig": "default",
+        "targetSdkVersion": "6.0.1(21)",
+        "compatibleSdkVersion": "6.0.1(21)",
+        "runtimeOS": "HarmonyOS",
+        "buildOption": {
+          "strictMode": {
+            "caseSensitiveCheck": true,
+            "useNormalizedOHMUrl": true
+          }
+        }
+      }
+    ],
+    "buildModeSet": [
+      {
+        "name": "debug",
+      },
+      {
+        "name": "release"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "name": "entry",
+      "srcPath": "./entry",
+      "targets": [
+        {
+          "name": "default",
+          "applyToProducts": [
+            "default"
+          ]
+        }
+      ]
+    }
+  ]
+}

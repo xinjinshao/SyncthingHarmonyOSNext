@@ -1,0 +1,40 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "Syncthing - Decentralized File Synchronization"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "Syncthing main entry"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "Syncthing"
+    },
+    {
+      "name": "internet_permission_reason",
+      "value": "Required for peer-to-peer file synchronization"
+    },
+    {
+      "name": "network_permission_reason",
+      "value": "Required to detect network status for sync conditions"
+    },
+    {
+      "name": "background_permission_reason",
+      "value": "Required to keep file synchronization running in background"
+    },
+    {
+      "name": "storage_permission_reason",
+      "value": "Required to read and write synced files"
+    },
+    {
+      "name": "notification_permission_reason",
+      "value": "Required to show sync status notifications"
+    },
+    {
+      "name": "camera_permission_reason",
+      "value": "Required to scan QR codes for device IDs"
+    }
+  ]
+}

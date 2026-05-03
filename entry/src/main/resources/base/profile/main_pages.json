@@ -1,0 +1,17 @@
+{
+  "src": [
+    "pages/Index",
+    "pages/MainPage",
+    "pages/FirstStartPage",
+    "pages/DeviceListPage",
+    "pages/FolderListPage",
+    "pages/SandboxViewPage",
+    "pages/SyncConditionsPage",
+    "pages/DeviceDetailPage",
+    "pages/FolderDetailPage",
+    "pages/SettingsPage",
+    "pages/WebGuiPage",
+    "pages/RecentChangesPage",
+    "pages/LogPage"
+  ]
+}
