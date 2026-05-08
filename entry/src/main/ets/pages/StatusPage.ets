@@ -944,6 +944,10 @@ export struct StatusPage {
   private async setForceMode(mode: number): Promise<void> {
     this.forceMode = mode;
     await this.preferencesManager.putNumber(Constants.PREF_BTNSTATE_FORCE_START_STOP, mode);
+    const service = ServiceLocator.get<SyncthingService>(SERVICE_NAMES.SYNCTHING_SERVICE);
+    if (service !== undefined) {
+      await service.enforceRunConditionsNow();
+    }
   }
 
   private statusTitle(): string {

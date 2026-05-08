@@ -98,10 +98,13 @@ struct SyncConditionsPage {
 
           ListItemGroup({ header: this.sectionHeader('Power') }) {
             ListItem() {
-              this.pendingPowerSourceItem()
+              this.powerSourceItem()
             }
             ListItem() {
-              this.pendingToggleItem('Respect Battery Saver', 'Pending battery saver state integration', this.respectBatterySaving)
+              this.toggleItem('Respect Battery Saver', 'Pause sync while HarmonyOS power save mode is active', this.respectBatterySaving, (value: boolean) => {
+                this.respectBatterySaving = value;
+                this.saveBoolean(Constants.PREF_RESPECT_BATTERY_SAVING, value);
+              })
             }
             ListItem() {
               this.pendingToggleItem('Respect Master Sync', 'Pending Harmony equivalent mapping', this.respectMasterSync)

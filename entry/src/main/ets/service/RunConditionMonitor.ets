@@ -1,9 +1,12 @@
 import connection from '@ohos.net.connection';
+import batteryInfo from '@ohos.batteryInfo';
+import power from '@ohos.power';
 import { Logger } from '../common/Logger';
 import { EventBus, SyncthingEvents } from '../common/EventBus';
 import { PreferencesManager } from '../data/PreferencesManager';
 import { Constants } from './Constants';
 import { RunCondition } from '../types/index';
+import { BackgroundDiagnostics } from './BackgroundDiagnostics';
 
 const TAG = 'RunConditionMonitor';
 
@@ -22,15 +25,19 @@ export interface RunConditionResult {
 /**
  * Evaluates user-selected sync conditions against available HarmonyOS signals.
  *
- * Network state is wired today. Battery, power, and other platform conditions
- * are represented in the UI but remain guarded until the corresponding Harmony
- * APIs are connected.
+ * Network, power source, battery saver, force start/stop, and timed schedule
+ * checks are wired. Platform conditions that do not expose a validated HarmonyOS
+ * signal stay disabled in the UI.
  */
 export class RunConditionMonitor {
   private preferencesManager: PreferencesManager;
   private currentConditions: RunCondition | null = null;
   private isMonitoring: boolean = false;
   private monitorTimer: number | null = null;
+  private lastResult: RunConditionResult = {
+    decision: RunDecision.SHOULD_RUN,
+    reason: 'Run conditions have not been evaluated yet'
+  };
   private readonly MONITOR_INTERVAL_MS: number = 30000;
 
   constructor(preferencesManager: PreferencesManager) {
@@ -75,46 +82,39 @@ export class RunConditionMonitor {
       );
 
       if (forceState === Constants.BTNSTATE_FORCE_START) {
-        return {
+        return this.recordResult({
           decision: RunDecision.FORCE_START,
           reason: 'Force start requested by user'
-        };
+        });
       }
 
       if (forceState === Constants.BTNSTATE_FORCE_STOP) {
-        return {
+        return this.recordResult({
           decision: RunDecision.FORCE_STOP,
           reason: 'Force stop requested by user'
-        };
-      }
-
-      if (!this.currentConditions.alwaysRunInBackground) {
-        return {
-          decision: RunDecision.SHOULD_NOT_RUN,
-          reason: 'Background sync is disabled'
-        };
+        });
       }
 
       const shouldRun = await this.evaluateRunConditions();
       if (shouldRun) {
         EventBus.emit(SyncthingEvents.RUN_CONDITIONS_MET, null);
-        return {
+        return this.recordResult({
           decision: RunDecision.SHOULD_RUN,
           reason: 'All run conditions are met'
-        };
+        });
       } else {
         EventBus.emit(SyncthingEvents.RUN_CONDITIONS_NOT_MET, null);
-        return {
+        return this.recordResult({
           decision: RunDecision.SHOULD_NOT_RUN,
-          reason: 'One or more run conditions are not met'
-        };
+          reason: this.lastResult.reason
+        });
       }
     } catch (err) {
       Logger.e(TAG, `Error checking run conditions: ${JSON.stringify(err)}`);
-      return {
+      return this.recordResult({
         decision: RunDecision.SHOULD_NOT_RUN,
         reason: `Error: ${JSON.stringify(err)}`
-      };
+      });
     }
   }
 
@@ -128,6 +128,11 @@ export class RunConditionMonitor {
       return false;
     }
 
+    const powerAllowed = this.evaluatePowerConditions(this.currentConditions);
+    if (!powerAllowed) {
+      return false;
+    }
+
     if (this.currentConditions.runOnTimeSchedule) {
       const syncDuration = this.currentConditions.syncDurationMinutes;
       const sleepInterval = this.currentConditions.sleepIntervalMinutes;
@@ -138,6 +143,7 @@ export class RunConditionMonitor {
 
         if (cyclePosition >= syncDuration * 60 * 1000) {
           Logger.d(TAG, 'In sleep interval, not running');
+          this.setReason('Timed schedule is currently in the sleep window');
           return false;
         }
       }
@@ -163,25 +169,77 @@ export class RunConditionMonitor {
 
       if (isWifi && !conditions.runOnWifi) {
         Logger.i(TAG, 'Wi-Fi network is active but Wi-Fi sync is disabled');
+        this.setReason('Wi-Fi network is active but Wi-Fi sync is disabled');
         return false;
       }
       if (isWifi && !isUnmetered && !conditions.runOnMeteredWifi) {
         Logger.i(TAG, 'Metered Wi-Fi network is active but metered Wi-Fi sync is disabled');
+        this.setReason('Metered Wi-Fi network is active but metered Wi-Fi sync is disabled');
         return false;
       }
       if (isCellular && !conditions.runOnMobileData) {
         Logger.i(TAG, 'Cellular network is active but mobile-data sync is disabled');
+        this.setReason('Cellular network is active but mobile-data sync is disabled');
         return false;
       }
       if (!isWifi && !isCellular && !conditions.runOnMobileData && !conditions.runOnWifi) {
         Logger.i(TAG, 'Default network is neither Wi-Fi nor cellular and no network type is allowed');
+        this.setReason('Default network type is not allowed');
         return false;
       }
       return true;
     } catch (err) {
       Logger.w(TAG, `Network run-condition check failed: ${JSON.stringify(err)}`);
+      this.setReason(`Network condition check failed: ${JSON.stringify(err)}`);
       return false;
     }
+  }
+
+  private evaluatePowerConditions(conditions: RunCondition): boolean {
+    if (!canIUse('SystemCapability.PowerManager.BatteryManager.Core')) {
+      Logger.w(TAG, 'BatteryManager syscap unavailable, skipping power-source run-condition checks');
+      return true;
+    }
+
+    try {
+      const pluggedType = batteryInfo.pluggedType;
+      const isCharging = pluggedType === batteryInfo.BatteryPluggedType.AC ||
+        pluggedType === batteryInfo.BatteryPluggedType.USB ||
+        pluggedType === batteryInfo.BatteryPluggedType.WIRELESS ||
+        batteryInfo.chargingStatus === batteryInfo.BatteryChargeState.ENABLE ||
+        batteryInfo.chargingStatus === batteryInfo.BatteryChargeState.FULL;
+
+      if (conditions.powerSource === Constants.POWER_SOURCE_CHARGER && !isCharging) {
+        this.setReason('Charging power is required but the device is on battery');
+        return false;
+      }
+      if (conditions.powerSource === Constants.POWER_SOURCE_BATTERY && isCharging) {
+        this.setReason('Battery power is required but the device is charging');
+        return false;
+      }
+    } catch (err) {
+      Logger.w(TAG, `Power-source condition check failed: ${JSON.stringify(err)}`);
+      this.setReason(`Power-source condition check failed: ${JSON.stringify(err)}`);
+      return false;
+    }
+
+    if (conditions.respectBatterySaving && canIUse('SystemCapability.PowerManager.PowerManager.Core')) {
+      try {
+        const mode = power.getPowerMode();
+        if (mode === power.DevicePowerMode.MODE_POWER_SAVE ||
+          mode === power.DevicePowerMode.MODE_EXTREME_POWER_SAVE ||
+          mode === power.DevicePowerMode.MODE_CUSTOM_POWER_SAVE) {
+          this.setReason('Power save mode is active');
+          return false;
+        }
+      } catch (err) {
+        Logger.w(TAG, `Power-save condition check failed: ${JSON.stringify(err)}`);
+        this.setReason(`Power-save condition check failed: ${JSON.stringify(err)}`);
+        return false;
+      }
+    }
+
+    return true;
   }
 
   private hasBearer(bearers: Array<connection.NetBearType>, expected: connection.NetBearType): boolean {
@@ -207,6 +265,24 @@ export class RunConditionMonitor {
       Constants.PREF_BTNSTATE_FORCE_START_STOP,
       Constants.BTNSTATE_NO_FORCE_START_STOP
     );
+  }
+
+  getLastResult(): RunConditionResult {
+    return this.lastResult;
+  }
+
+  private setReason(reason: string): void {
+    this.lastResult = {
+      decision: RunDecision.SHOULD_NOT_RUN,
+      reason
+    };
+  }
+
+  private recordResult(result: RunConditionResult): RunConditionResult {
+    this.lastResult = result;
+    Logger.i(TAG, `Run condition result: ${result.decision}, reason=${result.reason}`);
+    BackgroundDiagnostics.record('runConditions.result', `decision=${result.decision}, reason=${result.reason}`);
+    return result;
   }
 
   async setForceStart(): Promise<void> {

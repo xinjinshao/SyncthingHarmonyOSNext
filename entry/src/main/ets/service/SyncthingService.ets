@@ -9,7 +9,7 @@ import { ServiceState } from '../types/index';
 import { Event } from '../model/Event';
 import { EventProcessor } from './EventProcessor';
 import { FolderMirrorScheduler } from './FolderMirrorScheduler';
-import { RunConditionMonitor } from './RunConditionMonitor';
+import { RunConditionMonitor, RunConditionResult, RunDecision } from './RunConditionMonitor';
 import { SyncthingProcessManager } from './SyncthingProcessManager';
 import { BackgroundSyncManager } from './BackgroundSyncManager';
 import { NotificationManager } from './NotificationManager';
@@ -34,7 +34,10 @@ export class SyncthingService {
   private preferencesManager: PreferencesManager;
   private processManager: SyncthingProcessManager | null = null;
   private updateTimer: number | null = null;
+  private runConditionTimer: number | null = null;
+  private syncPausedByRunConditions: boolean = false;
   private pollInterval: number = Constants.REST_UPDATE_INTERVAL_MS;
+  private runConditionIntervalMs: number = 30000;
   private coreRestProbeLogged: boolean = false;
 
   constructor() {
@@ -120,9 +123,7 @@ export class SyncthingService {
       if (this.folderMirrorScheduler) {
         this.folderMirrorScheduler.start();
       }
-      if (this.runConditionMonitor) {
-        await this.runConditionMonitor.startMonitoring();
-      }
+      this.startRunConditionEnforcement();
       if (this.backgroundSyncManager && await this.preferencesManager.getBoolean(Constants.PREF_START_SERVICE_ON_BOOT, false)) {
         await this.backgroundSyncManager.enable();
       }
@@ -164,6 +165,7 @@ export class SyncthingService {
     if (this.runConditionMonitor) {
       this.runConditionMonitor.stopMonitoring();
     }
+    this.stopRunConditionEnforcement();
 
     if (this.processManager !== null) {
       await this.processManager.stopNativeBinary();
@@ -191,6 +193,84 @@ export class SyncthingService {
     if (this.updateTimer !== null) {
       clearTimeout(this.updateTimer);
       this.updateTimer = null;
+    }
+  }
+
+  private startRunConditionEnforcement(): void {
+    if (this.runConditionTimer !== null) {
+      return;
+    }
+    this.enforceRunConditions();
+  }
+
+  async enforceRunConditionsNow(): Promise<void> {
+    if (this.runConditionTimer !== null) {
+      clearTimeout(this.runConditionTimer);
+      this.runConditionTimer = null;
+    }
+    await this.enforceRunConditions();
+  }
+
+  private stopRunConditionEnforcement(): void {
+    if (this.runConditionTimer !== null) {
+      clearTimeout(this.runConditionTimer);
+      this.runConditionTimer = null;
+    }
+    this.syncPausedByRunConditions = false;
+  }
+
+  private async enforceRunConditions(): Promise<void> {
+    if (this.state !== 'active') {
+      this.stopRunConditionEnforcement();
+      return;
+    }
+
+    try {
+      if (this.runConditionMonitor !== null) {
+        const result = await this.runConditionMonitor.checkConditions();
+        await this.applyRunConditionResult(result);
+      }
+    } catch (err) {
+      Logger.w(TAG, `Run condition enforcement failed: ${JSON.stringify(err)}`);
+      BackgroundDiagnostics.record('runConditions.enforce.failed', JSON.stringify(err));
+    }
+
+    this.runConditionTimer = setTimeout(() => {
+      this.runConditionTimer = null;
+      this.enforceRunConditions();
+    }, this.runConditionIntervalMs);
+  }
+
+  private async applyRunConditionResult(result: RunConditionResult): Promise<void> {
+    if (result.decision === RunDecision.SHOULD_NOT_RUN || result.decision === RunDecision.FORCE_STOP) {
+      if (this.syncPausedByRunConditions) {
+        return;
+      }
+      const pauseResult = await this.restApi.pauseAll();
+      if (pauseResult.success) {
+        this.syncPausedByRunConditions = true;
+        Logger.i(TAG, `Syncthing paused by run conditions: ${result.reason}`);
+        BackgroundDiagnostics.record('runConditions.pause.success', result.reason);
+      } else {
+        Logger.w(TAG, `Failed to pause Syncthing by run conditions: ${pauseResult.error}`);
+        BackgroundDiagnostics.record('runConditions.pause.failed', pauseResult.error || 'unknown');
+      }
+      return;
+    }
+
+    if (result.decision === RunDecision.SHOULD_RUN || result.decision === RunDecision.FORCE_START) {
+      if (!this.syncPausedByRunConditions && result.decision !== RunDecision.FORCE_START) {
+        return;
+      }
+      const resumeResult = await this.restApi.resumeAll();
+      if (resumeResult.success) {
+        this.syncPausedByRunConditions = false;
+        Logger.i(TAG, `Syncthing resumed by run conditions: ${result.reason}`);
+        BackgroundDiagnostics.record('runConditions.resume.success', result.reason);
+      } else {
+        Logger.w(TAG, `Failed to resume Syncthing by run conditions: ${resumeResult.error}`);
+        BackgroundDiagnostics.record('runConditions.resume.failed', resumeResult.error || 'unknown');
+      }
     }
   }
 

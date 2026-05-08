@@ -62,14 +62,14 @@ Implemented and wired to the embedded core:
 - Add/edit/delete folders, folder type, watch changes, ignore permissions, pause, pull order, versioning options, rescan, and per-folder status.
 - Folder sharing between the phone core and a desktop Syncthing peer.
 - Web GUI, logs, and recent changes views.
-- Sync condition settings, network-state monitoring, background sync toggle, background diagnostics, and system continuous-task notification integration.
+- Sync condition settings, network/power-state monitoring, run-condition driven pause/resume, background sync toggle, background diagnostics, and system continuous-task notification integration.
 - Sandbox file viewer for checking files accessible to the embedded core.
 
 Partial or platform-limited:
 
 - Public folder sync is constrained by HarmonyOS storage. Syncthing's Go core expects normal POSIX paths, while Harmony picker APIs often return authorized URIs. The current design maps selected external folders to sandbox mirror paths and provides import/export passes. This can use additional storage because files may exist once in the public folder and once in the app sandbox mirror.
 - True bidirectional public-folder sync without duplication would require a deeper filesystem abstraction or a supported platform API that exposes stable POSIX-like access to the selected directory. This project does not replace Syncthing's full filesystem layer.
-- Battery, power, and other system run-condition gates are represented in UI but remain guarded until the corresponding HarmonyOS APIs are connected and validated on target devices.
+- Roaming, SSID whitelist, master sync, flight mode, and other Android-specific run-condition gates remain disabled until equivalent HarmonyOS signals are validated on target devices.
 - Android share extension, camera/photo shoot workflow, and quick settings tile equivalents are not complete.
 
 Android migration status:
@@ -80,7 +80,7 @@ Android migration status:
 | Add/edit devices and QR pairing | Implemented |
 | Add/edit folders, sharing, rescan, versioning, pull order | Implemented |
 | Settings, Web GUI, logs, recent changes | Implemented |
-| Run conditions and background sync | Partially implemented; network/background paths are active, several power/battery gates remain platform-gated |
+| Run conditions and background sync | Partially implemented; Wi-Fi/mobile-data, metered Wi-Fi, power source, battery saver, timed schedule, force start/stop, and continuous background task control are active; roaming, SSID whitelist, master sync, and flight mode remain platform-gated |
 | Folder picker/public folder sync | Partially implemented through sandbox mirror import/export |
 | Share extension, camera/photo shoot, quick settings tiles | Not implemented |
 
@@ -130,7 +130,7 @@ The current validation baseline is:
 - Embedded Syncthing core starts, exposes `127.0.0.1:8384`, and reports local device ID through REST.
 - A desktop Syncthing instance and the phone instance can add each other and show an active LAN connection.
 - Folder creation, sharing, scan, and status rendering are validated through the app UI and REST polling.
-- Continuous background task creation and heartbeat diagnostics are visible in hilog when background sync is enabled.
+- Continuous background task creation, heartbeat diagnostics, run-condition decisions, and Syncthing pause/resume actions are visible in hilog when background sync is enabled.
 
 ## Repository Contents
 

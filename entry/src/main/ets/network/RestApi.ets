@@ -236,6 +236,8 @@ export class RestApi {
   async getSystemLogText(): Promise<ApiResponse<string>> { return ApiRequest.get<string>('/rest/system/log.txt', this.apiKey); }
   async getOptions(): Promise<ApiResponse<Options>> { return ApiRequest.get<Options>('/rest/config/options', this.apiKey); }
   async putOptions(options: Options): Promise<ApiResponse<Object>> { return ApiRequest.put<Object>('/rest/config/options', options, this.apiKey); }
+  async pauseAll(): Promise<ApiResponse<Object>> { return ApiRequest.post<Object>('/rest/system/pause', '', this.apiKey); }
+  async resumeAll(): Promise<ApiResponse<Object>> { return ApiRequest.post<Object>('/rest/system/resume', '', this.apiKey); }
   async getGuiConfig(): Promise<ApiResponse<GuiConfig>> { return ApiRequest.get<GuiConfig>('/rest/config/gui', this.apiKey); }
   async putGuiConfig(guiConfig: GuiConfig): Promise<ApiResponse<Object>> { return ApiRequest.put<Object>('/rest/config/gui', guiConfig, this.apiKey); }
   async getCompletion(deviceId: string, folderId: string): Promise<ApiResponse<CompletionInfo>> { return ApiRequest.get<CompletionInfo>('/rest/db/completion', this.apiKey); }
