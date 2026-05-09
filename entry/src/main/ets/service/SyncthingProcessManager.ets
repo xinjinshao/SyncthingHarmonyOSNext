@@ -1,4 +1,4 @@
-import fileIo from '@ohos.file.fs';
+import { fileIo } from '@kit.CoreFileKit';
 import { bundleManager } from '@kit.AbilityKit';
 import { Logger } from '../common/Logger';
 import { ServiceLocator, SERVICE_NAMES } from '../common/ServiceLocator';
@@ -198,16 +198,36 @@ export class SyncthingProcessManager {
     }
 
     const context = ServiceLocator.getOrThrow<Context>(SERVICE_NAMES.APPLICATION_CONTEXT);
-    const content = await context.resourceManager.getRawFileContent('syncthing_core');
-    const file = fileIo.openSync(
-      executablePath,
-      fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC
-    );
+    let content: Uint8Array;
     try {
-      fileIo.writeSync(file.fd, content.buffer);
+      content = await context.resourceManager.getRawFileContent('syncthing_core');
+    } catch (err) {
+      throw new Error(`Unable to read bundled Syncthing core: ${JSON.stringify(err)}`);
+    }
+
+    let file: fileIo.File;
+    try {
+      file = await fileIo.open(
+        executablePath,
+        fileIo.OpenMode.READ_WRITE | fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC
+      );
+    } catch (err) {
+      throw new Error(`Unable to create Syncthing executable: ${JSON.stringify(err)}`);
+    }
+
+    try {
+      try {
+        await fileIo.write(file.fd, content.buffer);
+      } catch (err) {
+        throw new Error(`Unable to write Syncthing executable: ${JSON.stringify(err)}`);
+      }
       Logger.i(TAG, `Syncthing executable installed: ${executablePath}`);
     } finally {
-      fileIo.closeSync(file);
+      try {
+        await fileIo.close(file);
+      } catch (err) {
+        Logger.w(TAG, `Failed to close Syncthing executable: ${JSON.stringify(err)}`);
+      }
     }
     return executablePath;
   }

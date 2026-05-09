@@ -6,7 +6,6 @@ import { Device } from '../model/Device';
 
 const TAG = 'DeviceListPage';
 
-@Entry
 @Component
 export struct DeviceListPage {
   @State devices: Device[] = [];

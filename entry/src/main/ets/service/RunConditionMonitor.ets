@@ -1,6 +1,5 @@
-import connection from '@ohos.net.connection';
-import batteryInfo from '@ohos.batteryInfo';
-import power from '@ohos.power';
+import { batteryInfo, power } from '@kit.BasicServicesKit';
+import { connection } from '@kit.NetworkKit';
 import { Logger } from '../common/Logger';
 import { EventBus, SyncthingEvents } from '../common/EventBus';
 import { PreferencesManager } from '../data/PreferencesManager';

@@ -795,7 +795,8 @@ struct FolderDetailPage {
   }
 
   private async pickFolderPath(): Promise<void> {
-    if (!this.folderSelectionSupported) {
+    if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
+      this.folderSelectionSupported = false;
       this.statusText = 'System folder picker is not supported on this device profile';
       return;
     }

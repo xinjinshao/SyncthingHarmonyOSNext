@@ -3,8 +3,6 @@
     "pages/Index",
     "pages/MainPage",
     "pages/FirstStartPage",
-    "pages/DeviceListPage",
-    "pages/FolderListPage",
     "pages/SandboxViewPage",
     "pages/SyncConditionsPage",
     "pages/DeviceDetailPage",

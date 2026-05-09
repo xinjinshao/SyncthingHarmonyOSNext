@@ -102,7 +102,12 @@ The normal HAP build does not rebuild the Syncthing Go core. The repository alre
 - `entry/src/main/libs/arm64-v8a/libsyncthingnative.h`
 - `entry/src/main/resources/rawfile/syncthing_core`
 
-That means other developers should be able to build the HAP with DevEco Studio or a correctly configured HarmonyOS command-line build environment, without installing the patched Go toolchain. They still need the usual HarmonyOS Next dependencies such as DevEco Studio, Node.js, Hvigor, and the matching HarmonyOS SDK/API level.
+That means other developers should be able to build the HAP with DevEco Studio or a correctly configured HarmonyOS command-line build environment, without installing the patched Go toolchain. They still need the usual HarmonyOS Next dependencies such as DevEco Studio, Node.js, Hvigor, and the matching HarmonyOS SDK/API level. The current app baseline targets HarmonyOS API 20:
+
+```json5
+"targetSdkVersion": "6.0.0(20)",
+"compatibleSdkVersion": "6.0.0(20)"
+```
 
 The checked-in E-drive scripts are maintainer-local convenience scripts. They keep Go, SDK, cache, and temp usage on the E drive to avoid filling the C drive on the original development machine:
 
@@ -125,12 +130,14 @@ Rebuilding the Go core is optional and advanced. It currently requires the patch
 
 The current validation baseline is:
 
-- ArkTS/HAP build succeeds with API 21 configuration.
+- ArkTS/HAP build succeeds with API 20 configuration.
 - The signed HAP installs and starts on a HarmonyOS Next phone.
 - Embedded Syncthing core starts, exposes `127.0.0.1:8384`, and reports local device ID through REST.
 - A desktop Syncthing instance and the phone instance can add each other and show an active LAN connection.
 - Folder creation, sharing, scan, and status rendering are validated through the app UI and REST polling.
 - Continuous background task creation, heartbeat diagnostics, run-condition decisions, and Syncthing pause/resume actions are visible in hilog when background sync is enabled.
+
+The API 20 compatibility cleanup keeps app source imports on the modern `@kit.*` path. Optional device capabilities such as continuous background tasks, ScanKit QR scanning, and folder picker access are guarded with runtime syscap checks. The build can still emit static syscap warnings for those optional APIs because the features remain compiled in and degrade safely at runtime when the device profile does not expose them. The NAPI bridge warning for `libsyncthing_napi.so` is expected with the current SDK; the module has a checked-in `.d.ts` declaration.
 
 ## Repository Contents
 

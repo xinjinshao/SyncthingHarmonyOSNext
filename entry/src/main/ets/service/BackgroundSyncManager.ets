@@ -5,6 +5,7 @@ import { Logger } from '../common/Logger';
 import { BackgroundDiagnostics } from './BackgroundDiagnostics';
 
 const TAG = 'BackgroundSyncManager';
+const BACKGROUND_TASK_SYSCAP = 'SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask';
 
 /**
  * Wraps HarmonyOS continuous background tasks for Syncthing's long-running sync.
@@ -39,6 +40,13 @@ export class BackgroundSyncManager {
    */
   async enable(): Promise<boolean> {
     this.desired = true;
+    if (!this.isContinuousTaskSupported()) {
+      this.enabled = false;
+      this.lastError = 'Continuous background task capability is not available on this device profile';
+      Logger.w(TAG, this.lastError);
+      BackgroundDiagnostics.record('background.enable.unsupported', this.lastError);
+      return false;
+    }
     if (this.enabled) {
       this.startHeartbeat();
       await this.logSystemTaskSnapshot('enable-already-enabled');
@@ -50,6 +58,9 @@ export class BackgroundSyncManager {
       BackgroundDiagnostics.record('background.enable.request', `modes=${this.bgModes.join(',')}`);
       await this.ensureNotificationEnabled(uiContext);
       const agent = await this.createWantAgent();
+      if (!canIUse('SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask')) {
+        throw new Error('Continuous background task capability is not available');
+      }
       const result = await backgroundTaskManager.startBackgroundRunning(uiContext, this.bgModes, agent);
       this.enabled = true;
       this.lastError = '';
@@ -73,10 +84,20 @@ export class BackgroundSyncManager {
   async disable(): Promise<boolean> {
     try {
       this.desired = false;
+      if (!this.isContinuousTaskSupported()) {
+        this.enabled = false;
+        this.continuousTaskId = -1;
+        this.continuousNotificationId = -1;
+        this.stopHeartbeat();
+        BackgroundDiagnostics.record('background.disable.unsupported');
+        return true;
+      }
       const uiContext = this.requireContext();
       BackgroundDiagnostics.record('background.disable.request', `notificationId=${this.continuousNotificationId}, continuousTaskId=${this.continuousTaskId}`);
       this.stopHeartbeat();
-      if (this.continuousTaskId > 0) {
+      if (!canIUse('SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask')) {
+        BackgroundDiagnostics.record('background.disable.unsupported.inline');
+      } else if (this.continuousTaskId > 0) {
         await backgroundTaskManager.stopBackgroundRunning(uiContext, this.continuousTaskId);
       } else {
         await backgroundTaskManager.stopBackgroundRunning(uiContext);
@@ -141,11 +162,16 @@ export class BackgroundSyncManager {
   }
 
   private async ensureNotificationEnabled(context: common.UIAbilityContext): Promise<void> {
-    const enabled = await notificationManager.isNotificationEnabled();
-    BackgroundDiagnostics.record('background.notification.permission', `enabled=${enabled}`);
-    if (!enabled) {
-      await notificationManager.requestEnableNotification(context);
-      BackgroundDiagnostics.record('background.notification.permission.requested');
+    try {
+      const enabled = await notificationManager.isNotificationEnabled();
+      BackgroundDiagnostics.record('background.notification.permission', `enabled=${enabled}`);
+      if (!enabled) {
+        await notificationManager.requestEnableNotification(context);
+        BackgroundDiagnostics.record('background.notification.permission.requested');
+      }
+    } catch (err) {
+      BackgroundDiagnostics.record('background.notification.permission.failed', JSON.stringify(err));
+      throw new Error(JSON.stringify(err));
     }
   }
 
@@ -161,7 +187,12 @@ export class BackgroundSyncManager {
       requestCode: 1001,
       actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
     };
-    return await wantAgent.getWantAgent(info);
+    try {
+      return await wantAgent.getWantAgent(info);
+    } catch (err) {
+      BackgroundDiagnostics.record('background.wantAgent.failed', JSON.stringify(err));
+      throw new Error(JSON.stringify(err));
+    }
   }
 
   private startHeartbeat(): void {
@@ -190,7 +221,15 @@ export class BackgroundSyncManager {
   }
 
   private async refreshSystemContinuousTask(source: string): Promise<void> {
+    if (!this.isContinuousTaskSupported()) {
+      BackgroundDiagnostics.record('background.update.unsupported', `source=${source}`);
+      return;
+    }
     try {
+      if (!canIUse('SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask')) {
+        BackgroundDiagnostics.record('background.update.unsupported.inline', `source=${source}`);
+        return;
+      }
       const result = await backgroundTaskManager.updateBackgroundRunning(this.requireContext(), this.bgModes);
       if (result.notificationId > 0) {
         this.continuousNotificationId = result.notificationId;
@@ -222,7 +261,15 @@ export class BackgroundSyncManager {
   }
 
   private async logSystemTaskSnapshot(source: string): Promise<string> {
+    if (!this.isContinuousTaskSupported()) {
+      const snapshot = 'unsupported';
+      BackgroundDiagnostics.record('background.tasks.snapshot', `source=${source}, tasks=${snapshot}`);
+      return snapshot;
+    }
     try {
+      if (!canIUse('SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask')) {
+        return 'unsupported';
+      }
       const tasks = await backgroundTaskManager.getAllContinuousTasks(this.requireContext(), true);
       const parts: string[] = [];
       for (let i = 0; i < tasks.length; i++) {
@@ -261,7 +308,15 @@ export class BackgroundSyncManager {
     if (this.callbacksRegistered) {
       return;
     }
+    if (!this.isContinuousTaskSupported()) {
+      BackgroundDiagnostics.record('background.callbacks.unsupported');
+      return;
+    }
     try {
+      if (!canIUse('SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask')) {
+        BackgroundDiagnostics.record('background.callbacks.unsupported.inline');
+        return;
+      }
       backgroundTaskManager.on('continuousTaskCancel', (info) => {
         BackgroundDiagnostics.record('background.callback.cancel', `id=${info.id}, reason=${info.reason}`);
         if (info.id === this.continuousTaskId) {
@@ -289,5 +344,9 @@ export class BackgroundSyncManager {
     } catch (err) {
       BackgroundDiagnostics.record('background.callbacks.failed', JSON.stringify(err));
     }
+  }
+
+  private isContinuousTaskSupported(): boolean {
+    return canIUse(BACKGROUND_TASK_SYSCAP);
   }
 }

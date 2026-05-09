@@ -1,4 +1,4 @@
-import fileIo from '@ohos.file.fs';
+import { fileIo } from '@kit.CoreFileKit';
 import { Logger } from '../common/Logger';
 import { Utils } from '../common/Utils';
 

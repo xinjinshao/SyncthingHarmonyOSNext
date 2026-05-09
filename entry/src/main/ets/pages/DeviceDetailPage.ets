@@ -8,6 +8,7 @@ import { Device, DiscoveredDevice } from '../model/Device';
 import { Folder, FolderDevice } from '../model/SyncthingConfig';
 
 const TAG = 'DeviceDetailPage';
+const SCAN_BARCODE_SYSCAP = 'SystemCapability.Multimedia.Scan.ScanBarcode';
 
 class FolderShareState {
   folderId: string = '';
@@ -39,6 +40,7 @@ struct DeviceDetailPage {
   @State syncthingVersion: string = '';
   @State connectionStatus: string = '';
   @State folderShareStatus: string = '';
+  @State scanSupported: boolean = false;
   @State folders: Folder[] = [];
   @State folderShares: FolderShareState[] = [];
   @State discoveredDeviceIds: string[] = [];
@@ -48,6 +50,7 @@ struct DeviceDetailPage {
 
   aboutToAppear(): void {
     Logger.i(TAG, 'DeviceDetailPage appearing');
+    this.scanSupported = canIUse(SCAN_BARCODE_SYSCAP);
     this.loadDevice();
   }
 
@@ -229,8 +232,9 @@ struct DeviceDetailPage {
 
         Button('Scan')
           .height(44)
-          .backgroundColor('#007AFF')
-          .fontColor(Color.White)
+          .enabled(this.scanSupported)
+          .backgroundColor(this.scanSupported ? '#007AFF' : '#E8E8E8')
+          .fontColor(this.scanSupported ? Color.White : '#999')
           .onClick(() => {
             this.scanDeviceId();
           })
@@ -614,6 +618,10 @@ struct DeviceDetailPage {
   }
 
   private async scanDeviceId(): Promise<void> {
+    if (!canIUse('SystemCapability.Multimedia.Scan.ScanBarcode')) {
+      this.showToast('QR scanner is not supported on this device');
+      return;
+    }
     try {
       const context = this.resolveContext();
       if (context === null) {

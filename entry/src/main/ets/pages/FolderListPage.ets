@@ -5,7 +5,6 @@ import { Folder, FolderStatus } from '../model/Index';
 
 const TAG = 'FolderListPage';
 
-@Entry
 @Component
 export struct FolderListPage {
   @State folders: Folder[] = [];

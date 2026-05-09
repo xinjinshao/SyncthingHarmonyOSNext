@@ -5,10 +5,10 @@ const TAG = 'ServiceLocator';
 type Factory<T> = () => T;
 
 class ServiceRegistry {
-  private singletons: Map<string, Object> = new Map();
-  private factories: Map<string, Factory<Object>> = new Map();
+  private singletons: Map<string, object> = new Map();
+  private factories: Map<string, Factory<object>> = new Map();
 
-  registerSingleton<T extends Object>(name: string, instance: T): void {
+  registerSingleton<T extends object>(name: string, instance: T): void {
     if (this.singletons.has(name)) {
       Logger.w(TAG, `Singleton '${name}' already registered, overwriting`);
     }
@@ -16,12 +16,12 @@ class ServiceRegistry {
     Logger.d(TAG, `Registered singleton: ${name}`);
   }
 
-  registerFactory<T extends Object>(name: string, factory: Factory<T>): void {
-    this.factories.set(name, factory as Factory<Object>);
+  registerFactory<T extends object>(name: string, factory: Factory<T>): void {
+    this.factories.set(name, factory as Factory<object>);
     Logger.d(TAG, `Registered factory: ${name}`);
   }
 
-  get<T extends Object>(name: string): T | undefined {
+  get<T extends object>(name: string): T | undefined {
     const singleton = this.singletons.get(name);
     if (singleton !== undefined) {
       return singleton as T;
@@ -29,14 +29,14 @@ class ServiceRegistry {
     const factory = this.factories.get(name);
     if (factory !== undefined) {
       const instance = factory() as T;
-      this.singletons.set(name, instance as Object);
+      this.singletons.set(name, instance as object);
       return instance;
     }
     Logger.e(TAG, `Service '${name}' not found in registry`);
     return undefined;
   }
 
-  getOrThrow<T extends Object>(name: string): T {
+  getOrThrow<T extends object>(name: string): T {
     const service = this.get<T>(name);
     if (service === undefined) {
       throw new Error(`Required service '${name}' is not registered`);

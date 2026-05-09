@@ -1,4 +1,4 @@
-import fileIo from '@ohos.file.fs';
+import { fileIo } from '@kit.CoreFileKit';
 import { Logger } from '../common/Logger';
 import { Constants } from './Constants';
 import { FolderLocationMapping } from './FolderLocationManager';
@@ -59,7 +59,14 @@ export class FolderMirrorService {
   }
 
   private async copyTree(sourceRoot: string, targetRoot: string, result: FolderMirrorResult): Promise<void> {
-    const names = await fileIo.listFile(sourceRoot);
+    let names: string[] = [];
+    try {
+      names = await fileIo.listFile(sourceRoot);
+    } catch (err) {
+      Logger.w(TAG, `Unable to list '${sourceRoot}': ${JSON.stringify(err)}`);
+      result.skippedItems++;
+      return;
+    }
     for (let i = 0; i < names.length; i++) {
       const name = names[i];
       if (this.shouldSkip(name)) {
@@ -68,19 +75,24 @@ export class FolderMirrorService {
       }
       const sourcePath = this.joinPath(sourceRoot, name);
       const targetPath = this.joinPath(targetRoot, name);
-      const stat = await fileIo.stat(sourcePath);
-      if (stat.isDirectory()) {
-        await this.ensureDir(targetPath);
-        await this.copyTree(sourcePath, targetPath, result);
-      } else if (stat.isFile()) {
-        if (await this.shouldCopyFile(sourcePath, targetPath)) {
-          await this.ensureParentDir(targetPath);
-          await fileIo.copyFile(sourcePath, targetPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
-          result.copiedFiles++;
+      try {
+        const stat = await fileIo.stat(sourcePath);
+        if (stat.isDirectory()) {
+          await this.ensureDir(targetPath);
+          await this.copyTree(sourcePath, targetPath, result);
+        } else if (stat.isFile()) {
+          if (await this.shouldCopyFile(sourcePath, targetPath)) {
+            await this.ensureParentDir(targetPath);
+            await fileIo.copyFile(sourcePath, targetPath, fileIo.OpenMode.CREATE | fileIo.OpenMode.TRUNC);
+            result.copiedFiles++;
+          } else {
+            result.skippedItems++;
+          }
         } else {
           result.skippedItems++;
         }
-      } else {
+      } catch (err) {
+        Logger.w(TAG, `Skipping mirror item '${sourcePath}': ${JSON.stringify(err)}`);
         result.skippedItems++;
       }
     }
@@ -116,7 +128,13 @@ export class FolderMirrorService {
     if (this.pathExists(path)) {
       return;
     }
-    await fileIo.mkdir(path, true);
+    try {
+      await fileIo.mkdir(path, true);
+    } catch (err) {
+      if (!this.pathExists(path)) {
+        throw new Error(JSON.stringify(err));
+      }
+    }
   }
 
   private pathExists(path: string): boolean {

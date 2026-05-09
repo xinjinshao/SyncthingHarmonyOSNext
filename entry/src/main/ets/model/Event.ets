@@ -3,14 +3,14 @@ export interface Event {
   globalId: number;
   time: string;
   type: string;
-  data: Object;
+  data: Record<string, Object>;
 }
 
 export interface DiskEvent {
   id: number;
   time: string;
   type: string;
-  data: Object;
+  data: Record<string, Object>;
 }
 
-export type EventData = Object;
+export type EventData = Record<string, Object>;
