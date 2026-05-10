@@ -67,10 +67,6 @@ export class Constants {
 
   static readonly PREF_EVENT_PROCESSOR_LAST_SYNC_ID: string = 'last_sync_id';
   static readonly PREF_DEBUG_FACILITIES_AVAILABLE: string = 'debug_facilities_available';
-  static readonly PREF_FOLDER_LOCATION_EXTERNAL_IDS: string = 'folder_location_external_ids';
-  static readonly PREF_FOLDER_LOCATION_EXTERNAL_URI_PREFIX: string = 'folder_location_external_uri_';
-  static readonly PREF_FOLDER_LOCATION_SYNC_PATH_PREFIX: string = 'folder_location_sync_path_';
-
   static readonly FOLDER_TYPE_SEND_ONLY: string = 'sendonly';
   static readonly FOLDER_TYPE_SEND_RECEIVE: string = 'sendreceive';
   static readonly FOLDER_TYPE_RECEIVE_ONLY: string = 'receiveonly';
@@ -81,7 +77,6 @@ export class Constants {
 
   static readonly REST_UPDATE_INTERVAL_MS: number = 3000;
   static readonly GUI_UPDATE_INTERVAL_MS: number = 1000;
-  static readonly FOLDER_MIRROR_INTERVAL_MS: number = 60000;
 
   static readonly CONFIG_FILE: string = 'config.xml';
   static readonly CONFIG_TEMP_FILE: string = 'config.xml.tmp';
@@ -129,14 +124,6 @@ export class Constants {
 
   static DYN_PREF_OBJECT_SYNC_ON_POWER_SOURCE(objectPrefixAndId: string): string {
     return `${objectPrefixAndId}_${Constants.PREF_POWER_SOURCE}`;
-  }
-
-  static DYN_PREF_FOLDER_LOCATION_EXTERNAL_URI(folderId: string): string {
-    return `${Constants.PREF_FOLDER_LOCATION_EXTERNAL_URI_PREFIX}${folderId}`;
-  }
-
-  static DYN_PREF_FOLDER_LOCATION_SYNC_PATH(folderId: string): string {
-    return `${Constants.PREF_FOLDER_LOCATION_SYNC_PATH_PREFIX}${folderId}`;
   }
 
   static getConfigFilePath(appFilesDir: string): string {

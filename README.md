@@ -17,7 +17,7 @@ The Android project depends on an Android-specific `libsyncthingnative.so`. Harm
 - `SyncthingNative` calls the Harmony NAPI module that starts the patched Syncthing Go core.
 - `RestApi` talks to the embedded core through `127.0.0.1:8384` with Syncthing's local REST API.
 - `BackgroundSyncManager` requests HarmonyOS continuous background running with `dataTransfer` and `multiDeviceConnection` modes, using the system-provided background notification.
-- Folder storage uses sandbox paths for the Go core and a mirror/import/export layer for Harmony picker URIs.
+- Folder storage is limited to app-sandbox paths that the Go core can access directly.
 
 The repository intentionally tracks the patched prebuilt artifacts under `entry/src/main/libs/` and `entry/src/main/resources/rawfile/`. These are part of the release source because a stock upstream Android `.so` cannot be built or reused as-is on HarmonyOS Next. The Harmony-compatible build includes native bridge and Go runtime adaptations, including TLS/runtime handling needed by the embedded Syncthing core on this platform.
 
@@ -67,8 +67,8 @@ Implemented and wired to the embedded core:
 
 Partial or platform-limited:
 
-- Public folder sync is constrained by HarmonyOS storage. Syncthing's Go core expects normal POSIX paths, while Harmony picker APIs often return authorized URIs. The current design maps selected external folders to sandbox mirror paths and provides import/export passes. This can use additional storage because files may exist once in the public folder and once in the app sandbox mirror.
-- True bidirectional public-folder sync without duplication would require a deeper filesystem abstraction or a supported platform API that exposes stable POSIX-like access to the selected directory. This project does not replace Syncthing's full filesystem layer.
+- File sync is currently limited to app-sandbox folders such as `/data/storage/el2/base/files/<folder-id>`. Files received from a desktop peer are stored inside the app sandbox and are not automatically visible in Gallery or public phone folders.
+- Public folder, Gallery folder, and arbitrary external directory sync are intentionally not implemented. HarmonyOS Next exposes user files through URI/media abstractions that the embedded Syncthing Go core cannot scan as normal POSIX paths.
 - Roaming, SSID whitelist, master sync, flight mode, and other Android-specific run-condition gates remain disabled until equivalent HarmonyOS signals are validated on target devices.
 - Android share extension, camera/photo shoot workflow, and quick settings tile equivalents are not complete.
 
@@ -81,7 +81,7 @@ Android migration status:
 | Add/edit folders, sharing, rescan, versioning, pull order | Implemented |
 | Settings, Web GUI, logs, recent changes | Implemented |
 | Run conditions and background sync | Partially implemented; Wi-Fi/mobile-data, metered Wi-Fi, power source, battery saver, timed schedule, force start/stop, and continuous background task control are active; roaming, SSID whitelist, master sync, and flight mode remain platform-gated |
-| Folder picker/public folder sync | Partially implemented through sandbox mirror import/export |
+| Folder picker/public folder sync | Not implemented; blocked by HarmonyOS URI/media storage model |
 | Share extension, camera/photo shoot, quick settings tiles | Not implemented |
 
 ## Filesystem Model
@@ -92,7 +92,24 @@ HarmonyOS Next protects app data and user files differently from Android. The em
 /data/storage/el2/base/files/<folder-id>
 ```
 
-When the user selects a system folder, the app stores the external URI separately and gives Syncthing a sandbox mirror path. Manual and scheduled mirror workers then import files into the sandbox and export files back when the platform accepts the target URI operation. This is the safest current compromise, but it is not the same as direct shared-folder access and may temporarily duplicate storage.
+Current file-sync limitation:
+
+- Syncthing can synchronize files that live in the app sandbox.
+- The app cannot currently synchronize an existing public phone directory, a Gallery folder, or a user-selected document directory as the authoritative folder.
+- Files in the app sandbox are private to the app. The system Gallery does not treat the sandbox folder as a normal public photo/video directory.
+- Users who need a real public directory tree, for example `Gallery/Photos/2026/Trip`, are blocked by the current public API surface.
+
+### Rejected Storage Approaches
+
+The project has tested and rejected the following approaches for this 1.0 baseline:
+
+| Approach | What was tested | Blocking point |
+|---|---|---|
+| Rewrite Syncthing core around a URI-backed filesystem | Architecture review of replacing filesystem operations with ArkTS/NAPI callbacks for list/open/read/write/stat/rename/delete/watch | Too invasive for the Go core. It would touch Syncthing's filesystem, index, watcher, conflict, temp-file, and security-sensitive paths, and it still depends on stable long-lived URI access that the phone did not provide reliably. |
+| Sandbox mirror import/export | Implemented prototype services, UI actions, scheduler, status badges, manifest planning, and folder picker validation | It duplicates storage, does not satisfy directory-tree-in-Gallery requirements, and generic folder picker selection failed on the test phone with an empty URI/error result. The code has been removed from the product baseline. |
+| Gallery/media-library projection | API review of `photoAccessHelper`, `READ_IMAGEVIDEO`, `WRITE_IMAGEVIDEO`, album lookup, asset creation, and album asset operations | Public API models media as albums/assets, not a real nested filesystem tree. API 20 does not expose a public parent folder/relative path API that can create `Photos/<subdir>` as a true Gallery directory tree for Syncthing. |
+
+The product therefore keeps app-sandbox sync as the only supported file storage mode until HarmonyOS exposes a stable public-directory API that can be used by a native core, or until a full upstream-quality Syncthing filesystem backend is designed and validated.
 
 ## Build
 

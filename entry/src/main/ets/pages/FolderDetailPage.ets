@@ -1,10 +1,8 @@
-import { picker } from '@kit.CoreFileKit';
+import { fileIo } from '@kit.CoreFileKit';
 import { Logger } from '../common/Logger';
 import { ServiceLocator, SERVICE_NAMES } from '../common/ServiceLocator';
-import { PreferencesManager } from '../data/PreferencesManager';
 import { RestApi } from '../network/RestApi';
-import { FolderLocationManager, FolderLocationMapping } from '../service/FolderLocationManager';
-import { FolderMirrorResult, FolderMirrorService } from '../service/FolderMirrorService';
+import { Constants } from '../service/Constants';
 import { Device, Folder, FolderDevice, FolderStatus, Versioning } from '../model/Index';
 
 const TAG = 'FolderDetailPage';
@@ -17,8 +15,7 @@ class DeviceShareState {
 }
 
 /**
- * Folder create/edit screen that maps Harmony storage choices to Syncthing
- * folder configuration and sandbox mirror paths.
+ * Folder create/edit screen backed by app-sandbox storage.
  */
 @Entry
 @Component
@@ -27,7 +24,6 @@ struct FolderDetailPage {
   @State isLoading: boolean = true;
   @State isSaving: boolean = false;
   @State isScanning: boolean = false;
-  @State isMirroring: boolean = false;
   @State isDeleting: boolean = false;
   @State folderId: string = '';
   @State label: string = '';
@@ -47,13 +43,8 @@ struct FolderDetailPage {
   @State statusText: string = '';
   @State folderStateText: string = '';
   @State folderStatsText: string = '';
-  @State pathHintText: string = '';
-  @State externalFolderUri: string = '';
-  @State folderSelectionSupported: boolean = false;
 
   private restApi: RestApi | null = null;
-  private folderLocationManager: FolderLocationManager = new FolderLocationManager(PreferencesManager.getInstance());
-  private folderMirrorService: FolderMirrorService = new FolderMirrorService();
   private currentFolder: Folder | null = null;
   private devices: Device[] = [];
   private pendingDeviceId: string = '';
@@ -62,7 +53,6 @@ struct FolderDetailPage {
 
   aboutToAppear(): void {
     Logger.i(TAG, 'FolderDetailPage appearing');
-    this.folderSelectionSupported = canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection');
     this.loadFolder();
   }
 
@@ -97,12 +87,9 @@ struct FolderDetailPage {
               this.label = value;
             })
 
-            this.textField('Path', this.path, '/data/storage/el2/base/files/Sync', (value: string) => {
+            this.textField('Sandbox Path', this.path, '/data/storage/el2/base/files/Sync', (value: string) => {
               this.path = value.trim();
-              this.externalFolderUri = '';
-              this.updatePathHint();
-            })
-            this.pathActionsSection()
+            }, true)
 
             this.syncScenarioSection()
             this.folderTypeSection()
@@ -143,106 +130,6 @@ struct FolderDetailPage {
     .width('100%')
     .height('100%')
     .backgroundColor('#F5F5F5')
-  }
-
-  @Builder
-  pathActionsSection() {
-    Column({ space: 8 }) {
-      Row({ space: 8 }) {
-        Button('App Storage')
-          .height(36)
-          .layoutWeight(1)
-          .backgroundColor('#007AFF')
-          .fontColor(Color.White)
-          .onClick(() => this.useAppStoragePath())
-        Button() {
-          Text('System Folder')
-            .fontSize(14)
-            .fontColor(this.folderSelectionSupported ? '#007AFF' : '#999')
-            .decoration({ type: this.folderSelectionSupported ? TextDecorationType.None : TextDecorationType.LineThrough })
-        }
-        .height(36)
-        .layoutWeight(1)
-        .enabled(this.folderSelectionSupported)
-        .backgroundColor(this.folderSelectionSupported ? '#E9EEF5' : '#E8E8E8')
-        .onClick(() => this.pickFolderPath())
-      }
-      .width('100%')
-      Row({ space: 8 }) {
-        Button('Custom Path')
-          .height(34)
-          .layoutWeight(1)
-          .backgroundColor('#FFFFFF')
-          .fontColor('#333')
-          .onClick(() => {
-            this.externalFolderUri = '';
-            if (this.path.length === 0) {
-              this.path = this.folderLocationManager.getSandboxPath(this.folderId.length > 0 ? this.folderId : this.suggestFolderId());
-            }
-            this.updatePathHint();
-          })
-        Button('Mirror Status')
-          .height(34)
-          .layoutWeight(1)
-          .backgroundColor('#FFFFFF')
-          .fontColor('#007AFF')
-          .onClick(() => {
-            this.statusText = this.externalFolderUri.length > 0
-              ? 'External folder mirror is enabled. Import runs manually and periodically for send-capable folders.'
-              : 'App Storage path is directly scanned by Syncthing. External picker is not required.';
-          })
-      }
-      .width('100%')
-      if (!this.folderSelectionSupported) {
-        Text('System folder picker is not supported on this phone profile. App Storage is the supported location; direct custom paths remain available for debugging.')
-          .fontSize(12)
-          .fontColor('#777')
-          .width('100%')
-          .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-          .borderRadius(8)
-          .backgroundColor('#FFFFFF')
-      }
-      if (this.pathHintText.length > 0) {
-        Text(this.pathHintText)
-          .fontSize(12)
-          .fontColor(this.pathHintText.indexOf('URI') >= 0 ? '#FF9500' : '#777')
-          .width('100%')
-          .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-          .borderRadius(8)
-          .backgroundColor('#FFFFFF')
-      }
-      if (this.externalFolderUri.length > 0) {
-        Row({ space: 8 }) {
-          Button(this.isMirroring ? 'Importing' : 'Import Now')
-            .height(34)
-            .layoutWeight(1)
-            .enabled(!this.isMirroring)
-            .backgroundColor('#E9EEF5')
-            .fontColor('#007AFF')
-            .onClick(() => this.importExternalFolder())
-          Button(this.isMirroring ? 'Exporting' : 'Export Now')
-            .height(34)
-            .layoutWeight(1)
-            .enabled(!this.isMirroring)
-            .backgroundColor('#FFFFFF')
-            .fontColor('#333')
-            .onClick(() => this.exportExternalFolder())
-        }
-        .width('100%')
-        Text(`Selected: ${this.externalFolderUri}`)
-          .fontSize(11)
-          .fontFamily('monospace')
-          .fontColor('#777')
-          .maxLines(2)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-          .padding({ left: 10, right: 10, top: 8, bottom: 8 })
-          .borderRadius(8)
-          .backgroundColor('#FFFFFF')
-      }
-    }
-    .width('100%')
-    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -654,13 +541,11 @@ struct FolderDetailPage {
         }
         this.folderId = routeFolderId !== undefined && routeFolderId.length > 0 ? this.normalizeFolderId(routeFolderId) : this.suggestFolderId();
         this.label = params['label'] !== undefined && params['label'].length > 0 ? params['label'] : 'Sync';
-        this.path = `/data/storage/el2/base/files/${this.folderId}`;
-        this.updatePathHint();
+        this.path = this.getSandboxPath(this.folderId);
       } else {
         const folderResult = await api.getFolder(routeFolderId);
         if (folderResult.success && folderResult.data !== undefined) {
           this.applyFolder(folderResult.data);
-          await this.loadFolderLocationMapping(routeFolderId);
           await this.loadFolderStatus(routeFolderId);
         } else {
           this.showToast(folderResult.error || 'Folder not found');
@@ -697,7 +582,7 @@ struct FolderDetailPage {
     this.isSaving = true;
     try {
       const folder = this.buildFolderPayload();
-      const prepared = await this.folderLocationManager.ensureSyncthingFolder(folder.path);
+      const prepared = await this.ensureSyncthingFolder(folder.path);
       if (!prepared) {
         this.showToast('Folder storage is not ready');
         return;
@@ -713,8 +598,6 @@ struct FolderDetailPage {
         this.showToast('Folder save was not confirmed by Syncthing');
         return;
       }
-      await this.saveFolderLocationMapping(folder.id, folder.path);
-
       this.statusText = 'Folder saved';
       this.showToast(this.isCreateMode ? 'Folder created' : 'Folder saved');
       this.getUIContext().getRouter().back();
@@ -767,7 +650,6 @@ struct FolderDetailPage {
         this.showToast(result.error || 'Failed to delete folder');
         return;
       }
-      await this.folderLocationManager.clearMapping(this.folderId);
       this.showToast('Folder deleted');
       this.getUIContext().getRouter().back();
     } catch (err) {
@@ -784,7 +666,6 @@ struct FolderDetailPage {
     this.folderId = folder.id;
     this.label = folder.label;
     this.path = folder.path;
-    this.updatePathHint();
     this.folderType = folder.type.length > 0 ? folder.type : 'sendreceive';
     this.pullOrder = folder.order.length > 0 ? folder.order : 'random';
     this.applyVersioning(folder.versioning);
@@ -794,62 +675,12 @@ struct FolderDetailPage {
     this.rescanIntervalS = folder.rescanIntervalS;
   }
 
-  private async pickFolderPath(): Promise<void> {
-    if (!canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection')) {
-      this.folderSelectionSupported = false;
-      this.statusText = 'System folder picker is not supported on this device profile';
-      return;
-    }
-    try {
-      const options = new picker.DocumentSelectOptions();
-      options.selectMode = picker.DocumentSelectMode.FOLDER;
-      options.maxSelectNumber = 1;
-      const hostContext = this.getUIContext().getHostContext();
-      if (hostContext === undefined) {
-        this.showToast('Unable to select folder');
-        return;
-      }
-      const documentPicker = new picker.DocumentViewPicker(hostContext);
-      const uris = await documentPicker.select(options);
-      if (uris.length === 0) {
-        return;
-      }
-      const id = this.folderId.length > 0 ? this.folderId : this.suggestFolderId();
-      if (this.folderId.length === 0) {
-        this.folderId = id;
-      }
-      this.externalFolderUri = uris[0];
-      this.path = this.folderLocationManager.getSandboxPath(id);
-      this.updatePathHint();
-      this.showToast('Folder selected');
-    } catch (err) {
-      Logger.e(TAG, `Failed to pick folder: ${JSON.stringify(err)}`);
-      this.showToast('Unable to select folder');
-    }
-  }
-
   private useAppStoragePath(): void {
     const id = this.folderId.length > 0 ? this.folderId : this.suggestFolderId();
     if (this.folderId.length === 0) {
       this.folderId = id;
     }
-    this.externalFolderUri = '';
-    this.path = this.folderLocationManager.getSandboxPath(id);
-    this.updatePathHint();
-  }
-
-  private updatePathHint(): void {
-    if (this.externalFolderUri.length > 0) {
-      this.pathHintText = 'External folder selected. Syncthing uses the sandbox mirror path until URI mirroring is enabled.';
-    } else if (this.path.indexOf('://') >= 0) {
-      this.pathHintText = 'Picker returned a URI. Use Select Folder again so the app can map it to a sandbox mirror path.';
-    } else if (this.path.indexOf('/data/storage/el2/base/files') === 0) {
-      this.pathHintText = 'App sandbox path, directly accessible by the embedded Syncthing core.';
-    } else if (this.path.length > 0) {
-      this.pathHintText = 'Custom filesystem path. Syncthing can use it only if the core has direct access.';
-    } else {
-      this.pathHintText = '';
-    }
+    this.path = this.getSandboxPath(id);
   }
 
   private ensureStoragePathForScenario(): void {
@@ -860,64 +691,43 @@ struct FolderDetailPage {
 
   private getScenarioHint(): string {
     if (this.folderType === 'receiveonly') {
-      return 'PC to phone: choose where received files land on the phone. App Storage works now; system folder selection depends on device support.';
+      return 'PC to phone: files are received into the app sandbox.';
     }
     if (this.folderType === 'sendonly') {
-      return 'Phone to PC: use App Storage now, or choose a system folder only on devices that support folder selection.';
+      return 'Phone to PC: only files already placed inside the app sandbox can be sent.';
     }
-    return 'Two-way: both sides can send changes. App Storage is the stable path; external folder mirroring is available when the system picker is supported.';
+    return 'Two-way: both sides can send changes only within the app-sandbox folder.';
   }
 
-  private async loadFolderLocationMapping(folderId: string): Promise<void> {
-    const mapping: FolderLocationMapping = await this.folderLocationManager.getMapping(folderId);
-    this.externalFolderUri = mapping.externalUri;
-    if (mapping.syncthingPath.length > 0 && this.path !== mapping.syncthingPath) {
-      Logger.w(TAG, `Folder path differs from stored mapping: ${folderId}`);
-    }
-    this.updatePathHint();
+  private getSandboxPath(folderId: string): string {
+    return `/data/storage/el2/base/files/${folderId}`;
   }
 
-  private async saveFolderLocationMapping(folderId: string, syncthingPath: string): Promise<void> {
-    if (this.externalFolderUri.length > 0) {
-      await this.folderLocationManager.saveExternalMapping(folderId, this.externalFolderUri, syncthingPath);
-    } else {
-      await this.folderLocationManager.clearMapping(folderId);
+  private async ensureSyncthingFolder(path: string): Promise<boolean> {
+    if (path.length === 0 || path.indexOf('://') >= 0) {
+      return false;
     }
-  }
-
-  private async importExternalFolder(): Promise<void> {
-    const mapping = this.buildCurrentLocationMapping();
-    this.isMirroring = true;
     try {
-      const result: FolderMirrorResult = await this.folderMirrorService.importExternalToSandbox(mapping);
-      this.statusText = result.message;
-      this.showToast(result.message);
-      if (result.success && this.restApi !== null && this.folderId.length > 0) {
-        await this.restApi.scanFolder(this.folderId);
+      if (!this.pathExists(path)) {
+        await fileIo.mkdir(path, true);
       }
-    } finally {
-      this.isMirroring = false;
+      const markerPath = `${path}/${Constants.FILENAME_STFOLDER}`;
+      if (!this.pathExists(markerPath)) {
+        await fileIo.mkdir(markerPath, true);
+      }
+      return true;
+    } catch (err) {
+      Logger.e(TAG, `Failed to prepare Syncthing folder path '${path}': ${JSON.stringify(err)}`);
+      return false;
     }
   }
 
-  private async exportExternalFolder(): Promise<void> {
-    const mapping = this.buildCurrentLocationMapping();
-    this.isMirroring = true;
+  private pathExists(path: string): boolean {
     try {
-      const result: FolderMirrorResult = await this.folderMirrorService.exportSandboxToExternal(mapping);
-      this.statusText = result.message;
-      this.showToast(result.message);
-    } finally {
-      this.isMirroring = false;
+      return fileIo.accessSync(path);
+    } catch (err) {
+      return false;
     }
-  }
-
-  private buildCurrentLocationMapping(): FolderLocationMapping {
-    const mapping = new FolderLocationMapping();
-    mapping.folderId = this.folderId;
-    mapping.externalUri = this.externalFolderUri;
-    mapping.syncthingPath = this.path;
-    return mapping;
   }
 
   private applyFolderStatus(status: FolderStatus): void {

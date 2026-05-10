@@ -8,7 +8,6 @@ import { Constants } from './Constants';
 import { ServiceState } from '../types/index';
 import { Event } from '../model/Event';
 import { EventProcessor } from './EventProcessor';
-import { FolderMirrorScheduler } from './FolderMirrorScheduler';
 import { RunConditionMonitor, RunConditionResult, RunDecision } from './RunConditionMonitor';
 import { SyncthingProcessManager } from './SyncthingProcessManager';
 import { BackgroundSyncManager } from './BackgroundSyncManager';
@@ -21,14 +20,13 @@ const TAG = 'SyncthingService';
  * Coordinates the embedded Syncthing runtime and the app-facing services around it.
  *
  * This is the lifecycle owner for the NAPI-backed Go core, REST polling, event
- * processing, run-condition monitoring, folder mirror scheduling, and HarmonyOS
- * continuous background task integration.
+ * processing, run-condition monitoring, and HarmonyOS continuous background task
+ * integration.
  */
 export class SyncthingService {
   private state: ServiceState = 'stopped';
   private restApi: RestApi;
   private eventProcessor: EventProcessor | null = null;
-  private folderMirrorScheduler: FolderMirrorScheduler | null = null;
   private runConditionMonitor: RunConditionMonitor | null = null;
   private backgroundSyncManager: BackgroundSyncManager | null = null;
   private preferencesManager: PreferencesManager;
@@ -67,8 +65,6 @@ export class SyncthingService {
 
     this.eventProcessor = new EventProcessor(this.restApi);
     ServiceLocator.registerSingleton(SERVICE_NAMES.EVENT_PROCESSOR, this.eventProcessor);
-
-    this.folderMirrorScheduler = new FolderMirrorScheduler(this.restApi, this.preferencesManager);
 
     this.runConditionMonitor = new RunConditionMonitor(this.preferencesManager);
     ServiceLocator.registerSingleton(SERVICE_NAMES.RUN_CONDITION_MONITOR, this.runConditionMonitor);
@@ -120,9 +116,6 @@ export class SyncthingService {
       if (this.eventProcessor) {
         this.eventProcessor.start();
       }
-      if (this.folderMirrorScheduler) {
-        this.folderMirrorScheduler.start();
-      }
       this.startRunConditionEnforcement();
       if (this.backgroundSyncManager && await this.preferencesManager.getBoolean(Constants.PREF_START_SERVICE_ON_BOOT, false)) {
         await this.backgroundSyncManager.enable();
@@ -158,9 +151,6 @@ export class SyncthingService {
 
     if (this.eventProcessor) {
       this.eventProcessor.stop();
-    }
-    if (this.folderMirrorScheduler) {
-      this.folderMirrorScheduler.stop();
     }
     if (this.runConditionMonitor) {
       this.runConditionMonitor.stopMonitoring();

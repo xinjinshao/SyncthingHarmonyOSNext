@@ -18,7 +18,7 @@ This document records the current API 20 architecture after the HarmonyOS Next m
 | Control plane | Syncthing REST on localhost | Same REST API on `127.0.0.1:8384` |
 | UI state | Activities/fragments observing service state | ArkUI pages observing service/rest/event state |
 | Settings | SharedPreferences | `@kit.ArkData` preferences |
-| Storage | Direct filesystem paths | App sandbox paths plus optional picker URI mirror |
+| Storage | Direct filesystem paths | App sandbox paths only |
 | Device pairing | Manual ID and QR scan | Manual ID and ScanKit guarded by syscap |
 
 ## Runtime Architecture
@@ -36,7 +36,7 @@ EntryAbility
   -> ArkTS RestApi/EventProcessor/pages
 ```
 
-ArkTS owns UI, lifecycle, app preferences, background task management, notification integration, storage mapping, and REST polling. The Go core owns all Syncthing protocol behavior.
+ArkTS owns UI, lifecycle, app preferences, background task management, notification integration, app-sandbox path preparation, and REST polling. The Go core owns all Syncthing protocol behavior.
 
 ## API 20 Baseline
 
@@ -83,16 +83,26 @@ The Go core scans normal filesystem paths under app storage:
 /data/storage/el2/base/files/<folder-id>
 ```
 
-HarmonyOS picker APIs may return authorized URIs rather than stable POSIX-like paths. The current production-safe compromise is:
+This is the only supported production storage mode after the public-folder experiments. HarmonyOS Next picker and media APIs expose URI/media abstractions, while the embedded Syncthing Go core expects regular filesystem paths. The app therefore does not expose System Folder, Gallery Folder, import/export, or mirror controls.
 
-```text
-Harmony selected folder URI
-  <-> FolderLocationManager mapping
-  <-> FolderMirrorService import/export
-  <-> sandbox mirror path used by Syncthing core
-```
+### Current File Sync Limitation
 
-This design is compatible with the current core but can duplicate storage. A true zero-copy design would require a Syncthing filesystem backend that can operate on Harmony URI/file APIs through ArkTS/NAPI.
+| User intent | Current status | Reason |
+|---|---|---|
+| Sync app-private files between phone and PC | Supported | Syncthing can scan app-sandbox POSIX paths |
+| Sync a public phone folder | Not supported | Generic folder picker did not provide reliable usable directory access on the test phone |
+| Sync a Gallery directory tree | Not supported | Public media APIs expose albums/assets, not true nested directories |
+| Keep only one public copy of files | Not supported | Zero-copy requires either direct POSIX access or a full Syncthing filesystem backend |
+
+### Evaluated Storage Approaches
+
+| Approach | Validation performed | Final blocker |
+|---|---|---|
+| URI-backed Syncthing filesystem | Designed a possible Go filesystem abstraction backed by ArkTS/NAPI operations for directory listing, file open/read/write/stat/rename/delete, and change watching | The change is too broad for this baseline and would affect Syncthing's trusted filesystem, temp-file, watcher, scanner, index, and conflict paths. It also depends on stable long-lived URI access that was not validated on the device. |
+| Sandbox mirror | Implemented prototype code for folder mappings, recursive import/export, manual UI actions, scheduler, status badges, and manifest planning | It creates duplicate storage and still does not produce a real Gallery directory tree. The tested generic folder picker returned an empty URI/error result on the target phone. The prototype code has been removed. |
+| Gallery/media-library projection | Reviewed API 20 `photoAccessHelper` capabilities including `READ_IMAGEVIDEO`, `WRITE_IMAGEVIDEO`, album lookup, asset creation, and album asset operations | API 20 models media as albums/assets. It does not expose a public parent-folder or relative-path API for creating a real nested `Photos/<subdir>` Gallery directory tree. |
+
+The next viable storage direction would need a new platform capability or a dedicated upstream-quality Syncthing filesystem backend. Until then, app-sandbox sync is the documented behavior.
 
 ## Background Sync Architecture
 
@@ -106,7 +116,7 @@ All background task calls are guarded with `SystemCapability.ResourceSchedule.Ba
 |---|---|---|
 | Continuous background sync | `SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask` | Disable background mode and keep diagnostics |
 | QR scan pairing | `SystemCapability.Multimedia.Scan.ScanBarcode` | Disable/guard Scan button and keep manual input |
-| System folder picker | `SystemCapability.FileManagement.UserFileService.FolderSelection` | Disable System Folder and use App Storage |
+| Public/system folder sync | none validated | Disabled; use App Storage |
 | Battery/power run conditions | `SystemCapability.PowerManager.BatteryManager.Core` and `SystemCapability.PowerManager.PowerManager.Core` | Skip unsupported checks and keep other run conditions active |
 
 The API 20 compiler may still warn about these optional APIs. The warnings are accepted because the app needs those features on capable devices while degrading safely on unsupported device profiles.

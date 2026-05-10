@@ -6,7 +6,7 @@
     "versionName": "1.0.0",
     "icon": "$media:syncthing",
     "label": "$string:app_name",
-    "targetAPIVersion": 21,
-    "minAPIVersion": 21
+    "targetAPIVersion": 20,
+    "minAPIVersion": 20
   }
 }

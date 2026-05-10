@@ -40,16 +40,36 @@ This document describes the current module layout and API 20 responsibilities.
 | File | Responsibility | Notes |
 |---|---|---|
 | `service/Constants.ets` | Preference keys, REST constants, paths, defaults | Ported from Android concepts |
-| `service/SyncthingService.ets` | Top-level runtime owner | Starts core, polling, events, mirror scheduler, run conditions |
+| `service/SyncthingService.ets` | Top-level runtime owner | Starts core, polling, events, and run conditions |
 | `service/SyncthingProcessManager.ets` | Go core lifecycle | Starts NAPI core, waits for REST health, handles async core file installation |
 | `service/EventProcessor.ets` | Syncthing event polling | Polls `/rest/events` and emits app events |
 | `service/RunConditionMonitor.ets` | Run-condition evaluation | Uses `@kit.NetworkKit` and `@kit.BasicServicesKit`; network, power source, and battery saver checks are syscap guarded |
 | `service/BackgroundSyncManager.ets` | Continuous background task wrapper | Guards background APIs by syscap and records diagnostics |
 | `service/NotificationManager.ets` | App info/error notifications | System continuous-task notification is preferred for background sync |
 | `service/BackgroundDiagnostics.ets` | Diagnostic event log | Uses `@kit.CoreFileKit` |
-| `service/FolderLocationManager.ets` | Folder URI to sandbox path mapping | Stores selected external URI separately from Syncthing path |
-| `service/FolderMirrorService.ets` | Import/export mirror worker | Skips failed files instead of failing whole pass |
-| `service/FolderMirrorScheduler.ets` | Periodic mirror import scheduler | Runs while service is active |
+
+## File Sync Limitation
+
+The current product module set intentionally supports app-sandbox folder sync only. Public folder, Gallery folder, generic picker folder, and mirror modules have been removed from the runtime baseline.
+
+| Requirement | Status | Blocking point |
+|---|---|---|
+| Sync `/data/storage/el2/base/files/<folder-id>` | Implemented | Syncthing can scan this path directly |
+| Sync a user-selected public directory | Not implemented | Folder picker did not return a usable directory URI on the test phone, and the Go core cannot scan URI paths |
+| Sync a real Gallery directory tree | Not implemented | `photoAccessHelper` exposes albums/assets, not nested directory creation |
+| Avoid duplicate storage while syncing public files | Not implemented | Requires direct POSIX access or a full Syncthing filesystem backend |
+
+### Removed Prototype Modules
+
+The following prototype modules were removed because they did not satisfy the real directory-tree requirement:
+
+| Removed module | Previous role | Removal reason |
+|---|---|---|
+| `FolderLocationManager.ets` | Stored external URI to sandbox path mappings | Mapping enabled mirror behavior only |
+| `FolderMirrorService.ets` | Recursive import/export between URI folders and sandbox paths | Duplicated storage and could not create a real Gallery tree |
+| `FolderMirrorScheduler.ets` | Periodically ran mirror passes while the core was active | Depended on removed mirror service |
+
+Folder UI now exposes App Storage as the supported path and shows public folder actions as unsupported.
 
 ## Pages
 
@@ -93,7 +113,7 @@ This document describes the current module layout and API 20 responsibilities.
 - App source uses `@kit.*` imports instead of legacy `@ohos.*` imports.
 - Optional features are guarded by `canIUse()` before user-visible actions and before runtime calls.
 - `throw err` is avoided because ArkTS API 20 restricts throwing arbitrary values; errors are wrapped in `new Error(...)`.
-- File operations that may fail inside mirror traversal are isolated per item.
+- File operations that may fail are kept out of page render paths and handled with explicit error reporting.
 - Large synchronous file work should stay out of page render paths; new writes in `SyncthingProcessManager` use async file APIs.
 
 ## Feature Coverage
@@ -106,7 +126,7 @@ This document describes the current module layout and API 20 responsibilities.
 | QR device pairing | Implemented, syscap guarded |
 | Folder list/detail/add/delete/share/rescan | Implemented |
 | App sandbox folder sync | Implemented |
-| System folder picker | Platform-gated; sandbox mirror path when available |
+| System folder picker/public folder sync | Not implemented; app sandbox only |
 | Sandbox viewer | Implemented |
 | Web GUI/logs/recent changes | Implemented |
 | Background sync | Implemented on devices with continuous-task syscap |

@@ -79,7 +79,6 @@ export struct StatusPage {
   @State recentLogRows: LogRow[] = [];
   @State discoveryErrorText: string = '';
   @State lastRefreshText: string = '';
-  @State folderSelectionSupported: boolean = false;
   @State backgroundTaskSupported: boolean = false;
   @State backgroundSyncEnabled: boolean = false;
   @State backgroundSyncTaskText: string = 'Off';
@@ -94,7 +93,6 @@ export struct StatusPage {
     if (api !== undefined) {
       this.restApi = api;
     }
-    this.folderSelectionSupported = canIUse('SystemCapability.FileManagement.UserFileService.FolderSelection');
     this.backgroundTaskSupported = canIUse('SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask');
     this.loadForceMode();
     this.refresh();
@@ -543,7 +541,6 @@ export struct StatusPage {
       this.featureRow('Add Device + QR', true, 'Device screen')
       this.featureRow('Folder Sharing', true, 'Create, edit, rescan, share')
       this.featureRow('App Storage Folders', true, 'Supported')
-      this.featureRow('System Folder Picker', this.folderSelectionSupported, this.folderSelectionSupported ? 'Supported' : 'Unavailable on this phone')
       this.featureRow('Background Continuous Task', this.backgroundTaskSupported, this.backgroundSyncTaskText)
       this.featureRow('Logs and Recent Changes', true, 'REST backed')
     }
