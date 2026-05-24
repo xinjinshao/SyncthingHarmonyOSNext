@@ -38,6 +38,7 @@ export default class EntryAbility extends UIAbility {
 
       const verboseLog = await this.preferencesManager.isVerboseLogEnabled();
       Logger.setVerboseLog(verboseLog);
+      await this.preferencesManager.remove(Constants.PREF_EXIT_REQUESTED);
 
     } catch (err) {
       Logger.e(TAG, `Failed to initialize preferences: ${JSON.stringify(err)}`);
@@ -82,7 +83,41 @@ export default class EntryAbility extends UIAbility {
   }
 
   private destroySafely(): void {
-    this.shouldKeepBackgroundRunning()
+    this.isExitRequested()
+      .then((exitRequested: boolean) => {
+        if (exitRequested) {
+          Logger.i(TAG, 'User exit requested; stopping service and skipping background keepalive');
+          BackgroundDiagnostics.record('ability.destroy.exitRequested');
+          return this.stopForUserExit();
+        }
+        return this.destroyByBackgroundPolicy();
+      })
+      .catch((err: Error) => {
+        Logger.e(TAG, `Failed to evaluate destroy policy: ${JSON.stringify(err)}`);
+        BackgroundDiagnostics.record('ability.destroy.policyFailed', JSON.stringify(err));
+        ServiceLocator.clear();
+      });
+  }
+
+  private async isExitRequested(): Promise<boolean> {
+    return await this.preferencesManager.getBoolean(Constants.PREF_EXIT_REQUESTED, false);
+  }
+
+  private async stopForUserExit(): Promise<void> {
+    await this.preferencesManager.remove(Constants.PREF_EXIT_REQUESTED);
+    const manager = ServiceLocator.get<BackgroundSyncManager>(SERVICE_NAMES.BACKGROUND_SYNC_MANAGER);
+    if (manager !== undefined) {
+      await manager.disable();
+    }
+    const service = ServiceLocator.get<SyncthingService>(SERVICE_NAMES.SYNCTHING_SERVICE);
+    if (service !== undefined) {
+      await service.stopService();
+    }
+    ServiceLocator.clear();
+  }
+
+  private destroyByBackgroundPolicy(): Promise<void> {
+    return this.shouldKeepBackgroundRunning()
       .then((keepRunning: boolean) => {
         if (keepRunning) {
           Logger.i(TAG, 'Background sync is enabled; keeping service registry for continuous task');
@@ -115,6 +150,11 @@ export default class EntryAbility extends UIAbility {
   }
 
   private async ensureBackgroundSession(source: string): Promise<void> {
+    if (await this.isExitRequested()) {
+      BackgroundDiagnostics.record('ability.ensure.skipExitRequested', `source=${source}`);
+      return;
+    }
+
     const enabled = await this.shouldKeepBackgroundRunning();
     if (!enabled) {
       return;

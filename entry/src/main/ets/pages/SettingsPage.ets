@@ -3,6 +3,7 @@ import { ServiceLocator, SERVICE_NAMES } from '../common/ServiceLocator';
 import { PreferencesManager } from '../data/PreferencesManager';
 import { RestApi } from '../network/RestApi';
 import { Constants } from '../service/Constants';
+import { SyncthingService } from '../service/SyncthingService';
 import { Options } from '../model/Index';
 
 const TAG = 'SettingsPage';
@@ -29,6 +30,7 @@ struct SettingsPage {
   @State relaysEnabled: boolean = true;
   @State limitBandwidthInLan: boolean = false;
   @State statusText: string = '';
+  @State isExiting: boolean = false;
 
   private restApi: RestApi | null = null;
   private options: Options | null = null;
@@ -199,6 +201,13 @@ struct SettingsPage {
                 Logger.setVerboseLog(value);
                 this.saveLocalBoolean(Constants.PREF_VERBOSE_LOG, value, 'Verbose Logging saved');
               })
+            }
+          }
+          .width('100%')
+
+          ListItemGroup({ header: this.sectionHeader('App') }) {
+            ListItem() {
+              this.exitItem()
             }
           }
           .width('100%')
@@ -390,6 +399,34 @@ struct SettingsPage {
     .backgroundColor('#FFFFFF')
   }
 
+  @Builder
+  exitItem() {
+    Row() {
+      Column({ space: 2 }) {
+        Text('Exit')
+          .fontSize(16)
+          .fontColor('#FF3B30')
+
+        Text('Stop sync, clear the running notification, and close the app')
+          .fontSize(12)
+          .fontColor('#999')
+      }
+      .alignItems(HorizontalAlign.Start)
+      .layoutWeight(1)
+
+      Button(this.isExiting ? 'Exiting' : 'Exit')
+        .height(32)
+        .enabled(!this.isExiting)
+        .backgroundColor('#FFF1F0')
+        .fontColor('#FF3B30')
+        .onClick(() => this.exitApplication())
+    }
+    .width('100%')
+    .padding({ top: 12, bottom: 12, left: 16, right: 16 })
+    .borderRadius(12)
+    .backgroundColor('#FFFFFF')
+  }
+
   private applyOptions(options: Options): void {
     this.options = options;
     this.listenAddressesText = this.joinValues(options.listenAddresses);
@@ -452,6 +489,28 @@ struct SettingsPage {
       this.showToast(this.statusText);
     } finally {
       this.isSaving = false;
+    }
+  }
+
+  private async exitApplication(): Promise<void> {
+    if (this.isExiting) {
+      return;
+    }
+    this.isExiting = true;
+    this.statusText = 'Exiting...';
+    try {
+      const service = ServiceLocator.get<SyncthingService>(SERVICE_NAMES.SYNCTHING_SERVICE);
+      if (service === undefined) {
+        this.statusText = 'Syncthing service is not ready';
+        this.isExiting = false;
+        return;
+      }
+      await service.exitApplication();
+    } catch (err) {
+      Logger.e(TAG, `Failed to exit application: ${JSON.stringify(err)}`);
+      this.statusText = 'Failed to exit application';
+      this.showToast(this.statusText);
+      this.isExiting = false;
     }
   }
 

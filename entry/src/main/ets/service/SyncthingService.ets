@@ -167,6 +167,41 @@ export class SyncthingService {
     BackgroundDiagnostics.record('service.stop.success');
   }
 
+  /**
+   * Implements Android-style Exit: stop sync, stop background running, clear
+   * notifications, and close the foreground ability without changing the user's
+   * background-sync preference for the next launch.
+   */
+  async exitApplication(): Promise<void> {
+    Logger.i(TAG, 'Exiting application by user request');
+    BackgroundDiagnostics.record('service.exit.request');
+    await this.preferencesManager.putBoolean(Constants.PREF_EXIT_REQUESTED, true);
+
+    if (this.backgroundSyncManager !== null) {
+      await this.backgroundSyncManager.disable();
+    }
+
+    await this.stopService();
+    await NotificationManager.getInstance().cancelAll();
+
+    const uiContext = ServiceLocator.get<common.UIAbilityContext>(SERVICE_NAMES.UI_ABILITY_CONTEXT);
+    if (uiContext === undefined) {
+      Logger.w(TAG, 'UIAbilityContext unavailable during exit');
+      BackgroundDiagnostics.record('service.exit.noUiContext');
+      return;
+    }
+
+    try {
+      await uiContext.terminateSelf();
+      BackgroundDiagnostics.record('service.exit.terminateSelf.success');
+    } catch (err) {
+      Logger.e(TAG, `Failed to terminate ability during exit: ${JSON.stringify(err)}`);
+      BackgroundDiagnostics.record('service.exit.terminateSelf.failed', JSON.stringify(err));
+      await this.preferencesManager.remove(Constants.PREF_EXIT_REQUESTED);
+      throw new Error(JSON.stringify(err));
+    }
+  }
+
   private setState(newState: ServiceState): void {
     this.state = newState;
     Logger.d(TAG, `Service state changed to: ${newState}`);

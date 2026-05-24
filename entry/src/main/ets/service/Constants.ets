@@ -28,6 +28,7 @@ export class Constants {
   static readonly PREF_START_INTO_WEB_GUI: string = 'start_into_web_gui';
 
   static readonly PREF_START_SERVICE_ON_BOOT: string = 'always_run_in_background';
+  static readonly PREF_EXIT_REQUESTED: string = 'exit_requested';
   static readonly PREF_BROADCAST_SERVICE_CONTROL: string = 'broadcast_service_control';
   static readonly PREF_ALLOW_OVERWRITE_FILES: string = 'allow_overwrite_files';
 

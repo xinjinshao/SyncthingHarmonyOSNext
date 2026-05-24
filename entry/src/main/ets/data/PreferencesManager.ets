@@ -50,10 +50,13 @@ export class PreferencesManager {
   async getString(key: string, defaultValue: string = ''): Promise<string> {
     try {
       const prefs = this.ensureInitialized();
+      if (!await this.has(key)) {
+        return defaultValue;
+      }
       const value = await prefs.get(key, defaultValue);
       return value as string;
     } catch (err) {
-      Logger.e(TAG, `Error getting string pref '${key}': ${JSON.stringify(err)}`);
+      Logger.d(TAG, `Using default string pref '${key}'`);
       return defaultValue;
     }
   }
@@ -61,10 +64,13 @@ export class PreferencesManager {
   async getBoolean(key: string, defaultValue: boolean = false): Promise<boolean> {
     try {
       const prefs = this.ensureInitialized();
+      if (!await this.has(key)) {
+        return defaultValue;
+      }
       const value = await prefs.get(key, defaultValue);
       return value as boolean;
     } catch (err) {
-      Logger.e(TAG, `Error getting boolean pref '${key}': ${JSON.stringify(err)}`);
+      Logger.d(TAG, `Using default boolean pref '${key}'`);
       return defaultValue;
     }
   }
@@ -72,10 +78,13 @@ export class PreferencesManager {
   async getNumber(key: string, defaultValue: number = 0): Promise<number> {
     try {
       const prefs = this.ensureInitialized();
+      if (!await this.has(key)) {
+        return defaultValue;
+      }
       const value = await prefs.get(key, defaultValue);
       return value as number;
     } catch (err) {
-      Logger.e(TAG, `Error getting number pref '${key}': ${JSON.stringify(err)}`);
+      Logger.d(TAG, `Using default number pref '${key}'`);
       return defaultValue;
     }
   }
@@ -125,7 +134,7 @@ export class PreferencesManager {
       const prefs = this.ensureInitialized();
       return await prefs.has(key);
     } catch (err) {
-      Logger.e(TAG, `Error checking pref '${key}': ${JSON.stringify(err)}`);
+      Logger.d(TAG, `Preference '${key}' is not set`);
       return false;
     }
   }
