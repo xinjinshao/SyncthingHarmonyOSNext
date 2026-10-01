@@ -1,6 +1,6 @@
 # SyncthingHarmonyOSNext Module Design
 
-This document describes the current module layout and API 20 responsibilities.
+This document describes the current module layout and API 26 responsibilities.
 
 ## Common
 
@@ -50,14 +50,14 @@ This document describes the current module layout and API 20 responsibilities.
 
 ## File Sync Limitation
 
-The current product module set intentionally supports app-sandbox folder sync only. Public folder, Gallery folder, generic picker folder, and mirror modules have been removed from the runtime baseline.
+The current product uses app-sandbox POSIX sync with an API 26 donated Shared root for new folders. Existing private paths remain unchanged. Sandbox Files now includes user-confirmed Gallery export. A public-directory picker with persistent grant checks is now available for new folders; automatic mirror modules remain absent.
 
 | Requirement | Status | Blocking point |
 |---|---|---|
-| Sync `/data/storage/el2/base/files/<folder-id>` | Implemented | Syncthing can scan this path directly |
-| Sync a user-selected public directory | Not implemented | Folder picker did not return a usable directory URI on the test phone, and the Go core cannot scan URI paths |
+| Sync `/data/storage/el2/base/files/Shared/<folder-id>` | Implemented | Native Syncthing path inside the API 26 donated root |
+| Sync a user-selected public directory | Implemented for testing; runtime acceptance pending | Persist/check/activate the picker URI and pass its native path to the core |
 | Sync a real Gallery directory tree | Not implemented | `photoAccessHelper` exposes albums/assets, not nested directory creation |
-| Avoid duplicate storage while syncing public files | Not implemented | Requires direct POSIX access or a full Syncthing filesystem backend |
+| Same-file access through File Manager | Donation configured; user reports no File Manager visibility | System reads the donated sandbox directory |
 
 ### Removed Prototype Modules
 
@@ -69,7 +69,7 @@ The following prototype modules were removed because they did not satisfy the re
 | `FolderMirrorService.ets` | Recursive import/export between URI folders and sandbox paths | Duplicated storage and could not create a real Gallery tree |
 | `FolderMirrorScheduler.ets` | Periodically ran mirror passes while the core was active | Depended on removed mirror service |
 
-Folder UI now exposes App Storage as the supported path and shows public folder actions as unsupported.
+Folder UI defaults to Shared and offers Choose Public Folder for new folders. Persistent authorization must succeed; existing folders are not moved.
 
 ## Pages
 
@@ -85,7 +85,7 @@ Folder UI now exposes App Storage as the supported path and shows public folder 
 | `pages/FolderDetailPage.ets` | Add/edit folder, path selection, sharing, versioning, rescan |
 | `pages/SettingsPage.ets` | App settings and Syncthing options |
 | `pages/SyncConditionsPage.ets` | Background sync and run-condition controls |
-| `pages/SandboxViewPage.ets` | App sandbox file viewer |
+| `pages/SandboxViewPage.ets` | Sandbox file viewer and user-confirmed Gallery copies |
 | `pages/WebGuiPage.ets` | Embedded Syncthing Web GUI |
 | `pages/RecentChangesPage.ets` | Recent file changes from events |
 | `pages/LogPage.ets` | Syncthing/system log view |
@@ -108,7 +108,7 @@ Folder UI now exposes App Storage as the supported path and shows public folder 
 - `pages/RecentChangesPage`
 - `pages/LogPage`
 
-## API 20 Compatibility Rules
+## SDK Compatibility Rules
 
 - App source uses `@kit.*` imports instead of legacy `@ohos.*` imports.
 - Optional features are guarded by `canIUse()` before user-visible actions and before runtime calls.
@@ -126,7 +126,7 @@ Folder UI now exposes App Storage as the supported path and shows public folder 
 | QR device pairing | Implemented, syscap guarded |
 | Folder list/detail/add/delete/share/rescan | Implemented |
 | App sandbox folder sync | Implemented |
-| System folder picker/public folder sync | Not implemented; app sandbox only |
+| API 26 Shared storage | Donation configured and core scanning verified; File Manager visibility failed on the test phone |
 | Sandbox viewer | Implemented |
 | Web GUI/logs/recent changes | Implemented |
 | Background sync | Implemented on devices with continuous-task syscap |
@@ -137,7 +137,7 @@ Folder UI now exposes App Storage as the supported path and shows public folder 
 
 | Check | Status |
 |---|---|
-| API 20 HAP build | Passed |
+| API 26 HAP build | Verified on the migrated Windows environment |
 | No `@ohos.*` imports in app source | Passed |
 | HAP install on test phone | Passed |
 | App starts at `pages/MainPage` | Passed |
@@ -145,3 +145,9 @@ Folder UI now exposes App Storage as the supported path and shows public folder 
 | REST status/connections/config probe | Passed |
 | Desktop peer shown connected | Passed |
 | Continuous background task on test phone | Passed |
+
+## API 26 storage update
+
+New sync folders now use the donated Shared root. Existing folders keep their paths. Sandbox Files supports user-confirmed Gallery copies; automatic Gallery indexing and two-way media synchronization are not established. Earlier API 20 storage restrictions describe the previous baseline. See STORAGE_VALIDATION.md for current implementation and device evidence.
+
+Latest runtime results: unlocked app launch/REST health and Shared access pass; File Manager donation visibility fails user acceptance; Download/Photos selection completes but persistent access is rejected with 13900001 / PERSISTENCE_FORBIDDEN. Manual Gallery export remains unverified. Consumer-integration evidence and registration uncertainties are recorded in DONATION_REPRO.md. These notes concern the local API 26 working copy; its code changes are outside this documentation-only publication.

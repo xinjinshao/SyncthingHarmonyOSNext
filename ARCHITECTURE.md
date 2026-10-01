@@ -1,6 +1,6 @@
 # SyncthingHarmonyOSNext Architecture
 
-This document records the current API 20 architecture after the HarmonyOS Next migration cleanup.
+This document records the current API 26 architecture after the HarmonyOS Next migration cleanup.
 
 ## Goals
 
@@ -38,18 +38,18 @@ EntryAbility
 
 ArkTS owns UI, lifecycle, app preferences, background task management, notification integration, app-sandbox path preparation, and REST polling. The Go core owns all Syncthing protocol behavior.
 
-## API 20 Baseline
+## API 26 Baseline
 
-The project targets HarmonyOS `6.0.0(20)`:
+The project targets HarmonyOS `26.0.0`:
 
 ```json5
-"targetSdkVersion": "6.0.0(20)",
-"compatibleSdkVersion": "6.0.0(20)"
+"targetSdkVersion": "26.0.0",
+"compatibleSdkVersion": "26.0.0"
 ```
 
 App source uses modern Kit imports:
 
-| Area | API 20 import |
+| Area | SDK import |
 |---|---|
 | File APIs | `@kit.CoreFileKit` |
 | Network APIs | `@kit.NetworkKit` |
@@ -77,32 +77,13 @@ HarmonyOS Next cannot reuse the Android `libsyncthingnative.so` directly. This a
 
 ## Storage Architecture
 
-The Go core scans normal filesystem paths under app storage:
+The Go core scans ordinary POSIX paths. New folders use `/data/storage/el2/base/files/Shared/<folder-id>`. Only Shared is donated through the API 26 `module.shareFiles` profile with read/write access. Private configuration, TLS keys, databases and logs remain outside Shared. Existing folder paths are preserved.
 
-```text
-/data/storage/el2/base/files/<folder-id>
-```
+Directory donation supports system File Manager/FilePicker on phone/tablet. Configuration compiles and Shared indexing passes on the test phone; the user reports no File Manager visibility on this phone. It does not establish automatic Gallery indexing or nested albums.
 
-This is the only supported production storage mode after the public-folder experiments. HarmonyOS Next picker and media APIs expose URI/media abstractions, while the embedded Syncthing Go core expects regular filesystem paths. The app therefore does not expose System Folder, Gallery Folder, import/export, or mirror controls.
+Sandbox Files offers user-confirmed Save to Gallery, using `photoAccessHelper.showAssetsCreationDialog` and descriptor-based copying to the returned URI. Exported assets are separate copies and do not follow source edits/deletions. Runtime dialog and Gallery appearance verification are pending. No broad media read permission, URI-backed Go filesystem, automatic media mirror, or folder migration is introduced.
 
-### Current File Sync Limitation
-
-| User intent | Current status | Reason |
-|---|---|---|
-| Sync app-private files between phone and PC | Supported | Syncthing can scan app-sandbox POSIX paths |
-| Sync a public phone folder | Not supported | Generic folder picker did not provide reliable usable directory access on the test phone |
-| Sync a Gallery directory tree | Not supported | Public media APIs expose albums/assets, not true nested directories |
-| Keep only one public copy of files | Not supported | Zero-copy requires either direct POSIX access or a full Syncthing filesystem backend |
-
-### Evaluated Storage Approaches
-
-| Approach | Validation performed | Final blocker |
-|---|---|---|
-| URI-backed Syncthing filesystem | Designed a possible Go filesystem abstraction backed by ArkTS/NAPI operations for directory listing, file open/read/write/stat/rename/delete, and change watching | The change is too broad for this baseline and would affect Syncthing's trusted filesystem, temp-file, watcher, scanner, index, and conflict paths. It also depends on stable long-lived URI access that was not validated on the device. |
-| Sandbox mirror | Implemented prototype code for folder mappings, recursive import/export, manual UI actions, scheduler, status badges, and manifest planning | It creates duplicate storage and still does not produce a real Gallery directory tree. The tested generic folder picker returned an empty URI/error result on the target phone. The prototype code has been removed. |
-| Gallery/media-library projection | Reviewed API 20 `photoAccessHelper` capabilities including `READ_IMAGEVIDEO`, `WRITE_IMAGEVIDEO`, album lookup, asset creation, and album asset operations | API 20 models media as albums/assets. It does not expose a public parent-folder or relative-path API for creating a real nested `Photos/<subdir>` Gallery directory tree. |
-
-The next viable storage direction would need a new platform capability or a dedicated upstream-quality Syncthing filesystem backend. Until then, app-sandbox sync is the documented behavior.
+The earlier API 20 experiments did not provide usable public directory access. API 26 donation supersedes that conclusion for app-owned Shared storage. New folders may use the public-directory picker with persist/check/activate authorization through PublicFolderAccess. This branch and automatic two-way Gallery sync remain unvalidated. See STORAGE_VALIDATION.md for exact evidence and pending checks.
 
 ## Background Sync Architecture
 
@@ -116,16 +97,22 @@ All background task calls are guarded with `SystemCapability.ResourceSchedule.Ba
 |---|---|---|
 | Continuous background sync | `SystemCapability.ResourceSchedule.BackgroundTaskManager.ContinuousTask` | Disable background mode and keep diagnostics |
 | QR scan pairing | `SystemCapability.Multimedia.Scan.ScanBarcode` | Disable/guard Scan button and keep manual input |
-| Public/system folder sync | none validated | Disabled; use App Storage |
+| Public/system folder sync | FolderSelection and FolderAuthorization, then persistent grant verification | Keep the current path if selection or authorization fails; Download/Photos persistence failed on the test phone |
 | Battery/power run conditions | `SystemCapability.PowerManager.BatteryManager.Core` and `SystemCapability.PowerManager.PowerManager.Core` | Skip unsupported checks and keep other run conditions active |
 
-The API 20 compiler may still warn about these optional APIs. The warnings are accepted because the app needs those features on capable devices while degrading safely on unsupported device profiles.
+The compiler may still warn about these optional APIs. The warnings are accepted because the app needs those features on capable devices while degrading safely on unsupported device profiles.
 
 ## Current Verification
 
-- API 20 HAP build passes with `scripts/build-hap-e.ps1`.
-- Signed HAP installs on device `22N0223B15011897`.
+- API 26 HAP build is verified with `scripts/build-hap.ps1`.
+- Signed HAP installs on the test phone.
 - App starts at `pages/MainPage`.
 - Go core starts and REST probe succeeds for status, connections, and config.
 - A desktop Syncthing peer is visible as `Connected` in the Devices tab.
 - Continuous background task starts on the test phone and reports `notificationId=300`, `continuousTaskId=323`.
+
+## API 26 storage update
+
+New sync folders now use the donated Shared root. Existing folders keep their paths. Sandbox Files supports user-confirmed Gallery copies; automatic Gallery indexing and two-way media synchronization are not established. Earlier API 20 storage restrictions describe the previous baseline. See STORAGE_VALIDATION.md for current implementation and device evidence.
+
+Latest unlocked validation passes app launch, REST health and Shared readability. Donation visibility remains unsuccessful. Shared-scope map registration and donation database registration are separate system flows; AddToShareMap is not proof of donation registration. The device contains donation-related implementation, while File Manager consumer integration remains under investigation. These implementation/validation notes describe the local API 26 working copy; this documentation-only publication does not publish its pending code changes. See DONATION_REPRO.md.
